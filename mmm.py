@@ -1,22 +1,24 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox
 import fitz  # PyMuPDF
-from PIL import Image, ImageTk
+from PIL import Image
 import io
 import os
-import tempfile
 
 class StampApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Постановка печати на документ")
-        self.root.geometry("600x500")
+        self.root.geometry("600x350")
         
         # Переменные для хранения путей к файлам
         self.document_path = None
         self.stamp_path = None
         self.output_path = None
         self.document_type = None  # 'pdf' или 'image'
+        
+        # Фиксированное качество 600 DPI
+        self.quality_dpi = 600
         
         self.setup_ui()
     
@@ -105,14 +107,25 @@ class StampApp:
         self.margin_bottom_var = tk.StringVar(value="50")
         tk.Entry(margin_frame2, textvariable=self.margin_bottom_var, width=10).pack(side='left')
         
-        # Информация о положении
+        # Информация о положении и качестве
+        info_frame = tk.Frame(options_frame)
+        info_frame.pack(fill='x', pady=(5, 0))
+        
         info_label = tk.Label(
-            options_frame,
+            info_frame,
             text="📌 Печать ставится в правый нижний угол",
             font=("Arial", 9),
             fg="#666"
         )
-        info_label.pack(pady=(5, 0))
+        info_label.pack(side='left')
+        
+        quality_label = tk.Label(
+            info_frame,
+            text="⚡ Качество: 600 DPI",
+            font=("Arial", 9, "bold"),
+            fg="#4CAF50"
+        )
+        quality_label.pack(side='right')
         
         # Кнопка для постановки печати
         self.stamp_button = tk.Button(
@@ -239,12 +252,12 @@ class StampApp:
                 return  # пользователь отменил сохранение
             
             # Обновляем статус
-            self.status_label.config(text="⏳ Ставим печать...", fg="blue")
+            self.status_label.config(text="⏳ Ставим печать (600 DPI)...", fg="blue")
             self.root.update()
             
             # Обрабатываем в зависимости от типа документа
             if self.document_type == 'pdf':
-                self.add_stamp_to_pdf(
+                self.add_stamp_to_pdf_high_quality(
                     self.document_path,
                     self.stamp_path,
                     self.output_path,
@@ -253,7 +266,7 @@ class StampApp:
                     margin_bottom_mm
                 )
             else:  # image
-                self.add_stamp_to_image(
+                self.add_stamp_to_image_high_quality(
                     self.document_path,
                     self.stamp_path,
                     self.output_path,
@@ -275,8 +288,8 @@ class StampApp:
             self.status_label.config(text="❌ Ошибка при постановке печати", fg="red")
             messagebox.showerror("Ошибка", f"Произошла ошибка:\n{str(e)}")
     
-    def add_stamp_to_pdf(self, input_pdf, stamp_image, output_pdf, stamp_width_mm, margin_right_mm, margin_bottom_mm):
-        """Добавляет печать на PDF"""
+    def add_stamp_to_pdf_high_quality(self, input_pdf, stamp_image, output_pdf, stamp_width_mm, margin_right_mm, margin_bottom_mm):
+        """Добавляет печать на PDF с высоким качеством (600 DPI)"""
         
         # Открываем PDF
         doc = fitz.open(input_pdf)
@@ -289,42 +302,46 @@ class StampApp:
         margin_right = margin_right_mm * 2.83
         margin_bottom = margin_bottom_mm * 2.83
         
+        # Коэффициент масштабирования для 600 DPI (базовый 72 DPI)
+        scale_factor = self.quality_dpi / 72
+        
         for page_num in range(len(doc)):
             page = doc[page_num]
             
             # Получаем размер страницы в points
             rect = page.rect
             
-            # Рассчитываем позицию (правый нижний угол с отступами)
+            # Рассчитываем позицию
             x = rect.width - stamp_width - margin_right
             y = rect.height - stamp_width - margin_bottom
             
-            # Масштабируем печать
+            # Масштабируем печать с высоким качеством
             stamp_resized = stamp_pil.resize(
-                (int(stamp_width), int(stamp_width * stamp_pil.height / stamp_pil.width)),
+                (int(stamp_width * scale_factor), 
+                 int(stamp_width * stamp_pil.height / stamp_pil.width * scale_factor)),
                 Image.Resampling.LANCZOS
             )
             
-            # Конвертируем PIL в формат для fitz
+            # Сохраняем с высоким качеством
             stamp_bytes = io.BytesIO()
-            stamp_resized.save(stamp_bytes, format='PNG')
+            stamp_resized.save(stamp_bytes, format='PNG', optimize=False)
             stamp_bytes.seek(0)
             
-            # Создаем pixmap из байтов
+            # Создаем pixmap
             stamp_pixmap = fitz.Pixmap(stamp_bytes.read())
             
-            # Вставляем изображение
+            # Вставляем изображение (без параметра dpi)
             page.insert_image(
                 fitz.Rect(x, y, x + stamp_width, y + stamp_width),
                 pixmap=stamp_pixmap
             )
         
-        # Сохраняем результат
-        doc.save(output_pdf)
+        # Сохраняем с оптимизацией
+        doc.save(output_pdf, garbage=4, deflate=True, clean=True)
         doc.close()
     
-    def add_stamp_to_image(self, input_image, stamp_image, output_pdf, stamp_width_mm, margin_right_mm, margin_bottom_mm):
-        """Добавляет печать на изображение и сохраняет как PDF"""
+    def add_stamp_to_image_high_quality(self, input_image, stamp_image, output_pdf, stamp_width_mm, margin_right_mm, margin_bottom_mm):
+        """Добавляет печать на изображение с высоким качеством (600 DPI)"""
         
         # Открываем основное изображение
         main_image = Image.open(input_image)
@@ -332,19 +349,25 @@ class StampApp:
         # Открываем печать
         stamp_pil = Image.open(stamp_image)
         
-        # Конвертируем мм в пиксели (приблизительно, исходя из 300 DPI для печати)
-        # Для A4: 300 DPI = 11.8 пикселей на мм
-        pixels_per_mm = 11.8
+        # Конвертируем мм в пиксели с учетом 600 DPI
+        pixels_per_mm = self.quality_dpi / 25.4  # 1 дюйм = 25.4 мм
         
         stamp_width_px = int(stamp_width_mm * pixels_per_mm)
         margin_right_px = int(margin_right_mm * pixels_per_mm)
         margin_bottom_px = int(margin_bottom_mm * pixels_per_mm)
         
-        # Масштабируем печать
+        # Масштабируем печать с высоким качеством
         stamp_resized = stamp_pil.resize(
             (stamp_width_px, int(stamp_width_px * stamp_pil.height / stamp_pil.width)),
             Image.Resampling.LANCZOS
         )
+        
+        # Если основное изображение маленькое, масштабируем его до 600 DPI
+        target_width = int(210 * pixels_per_mm)  # A4 ширина в пикселях при 600 DPI (~4960px)
+        if main_image.width < target_width * 0.8:  # если меньше 80% от нужного размера
+            ratio = target_width / main_image.width
+            new_size = (target_width, int(main_image.height * ratio))
+            main_image = main_image.resize(new_size, Image.Resampling.LANCZOS)
         
         # Рассчитываем позицию
         x = main_image.width - stamp_width_px - margin_right_px
@@ -353,23 +376,25 @@ class StampApp:
         # Создаем копию изображения
         result_image = main_image.copy()
         
-        # Вставляем печать
+        # Вставляем печать с сохранением прозрачности
         if stamp_resized.mode == 'RGBA':
-            # Если печать с прозрачностью
-            # Создаем белый фон, если основное изображение не имеет альфа-канала
             if result_image.mode != 'RGBA':
                 result_image = result_image.convert('RGBA')
             result_image.paste(stamp_resized, (int(x), int(y)), stamp_resized)
         else:
-            # Без прозрачности
             result_image.paste(stamp_resized, (int(x), int(y)))
         
-        # Конвертируем в RGB для сохранения в PDF
+        # Сохраняем как PDF с высоким качеством
         if result_image.mode == 'RGBA':
             result_image = result_image.convert('RGB')
         
-        # Сохраняем как PDF
-        result_image.save(output_pdf, "PDF", resolution=300.0)
+        # Сохраняем с 600 DPI
+        result_image.save(
+            output_pdf, 
+            "PDF", 
+            resolution=self.quality_dpi,
+            optimize=False
+        )
     
     def open_folder(self, path):
         """Открывает папку в проводнике"""
