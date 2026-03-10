@@ -10,7 +10,7 @@ class StampApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Постановка печати на документ")
-        self.root.geometry("600x350")
+        self.root.geometry("600x500")
         
         # Переменные для хранения путей к файлам
         self.document_path = None
