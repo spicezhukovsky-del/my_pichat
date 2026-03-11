@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import fitz  # PyMuPDF
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 import io
 import os
 import platform
@@ -11,7 +11,7 @@ class StampApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Постановка печати на документ")
-        self.root.geometry("550x420")  # Немного уменьшил высоту
+        self.root.geometry("550x600")
         
         # Переменные для хранения путей к файлам
         self.document_path = None
@@ -26,8 +26,9 @@ class StampApp:
         self.text_color = (0, 0, 128, 255)  # RGBA: (R, G, B, Alpha)
         
         # === ФИКСИРОВАННЫЕ ПАРАМЕТРЫ ===
-        self.text_zone_padding_mm = 3  # 5 мм отступ со всех сторон текста
-        self.text_margin_mm = 0        # 2 мм отступ текста от печати (ФИКСИРОВАННЫЙ)
+        self.text_zone_padding_mm = 2  # 5 мм отступ со всех сторон текста
+        self.text_margin_mm = 0        # 2 мм отступ текста от печати
+        self.stamp_opacity = 0.6       # 30% прозрачность печати (0.0 - полностью прозрачная, 1.0 - полностью непрозрачная)
         
         # Определяем путь к шрифту
         if getattr(sys, 'frozen', False):
@@ -43,7 +44,8 @@ class StampApp:
         print(f"🔤 Шрифт существует: {os.path.exists(self.font_path)}")
         print(f"🎨 Цвет текста: #000080 (темно-синий)")
         print(f"📏 Зона текста: +{self.text_zone_padding_mm} мм со всех сторон")
-        print(f"📏 Отступ текста от печати: {self.text_margin_mm} мм (фиксированный)")
+        print(f"📏 Отступ текста от печати: {self.text_margin_mm} мм")
+        print(f"🔍 Прозрачность печати: {self.stamp_opacity * 100:.0f}%")
         print(f"🎯 Текст центрирован относительно печати")
         
         self.setup_ui()
@@ -166,7 +168,7 @@ class StampApp:
         
         params_info = tk.Label(
             params_frame,
-            text=f"📏 Зона текста: +{self.text_zone_padding_mm} мм | 📏 Отступ от печати: {self.text_margin_mm} мм | 🎯 Центрировано",
+            text=f"📏 Зона: +{self.text_zone_padding_mm} мм | 📏 Отступ: {self.text_margin_mm} мм | 🔍 Прозрачность печати: {self.stamp_opacity * 100:.0f}% | 🎯 Центрировано",
             font=("Arial", 8, "italic"),
             fg="#4CAF50"
         )
@@ -240,6 +242,22 @@ class StampApp:
         except:
             return ImageFont.load_default()
     
+    def apply_opacity(self, image, opacity):
+        """Применяет прозрачность к изображению"""
+        if image.mode == 'RGBA':
+            # Разделяем каналы
+            r, g, b, a = image.split()
+            # Применяем прозрачность к альфа-каналу
+            a = a.point(lambda p: p * opacity)
+            # Собираем обратно
+            return Image.merge('RGBA', (r, g, b, a))
+        else:
+            # Конвертируем в RGBA и применяем прозрачность
+            image = image.convert('RGBA')
+            r, g, b, a = image.split()
+            a = a.point(lambda p: p * opacity)
+            return Image.merge('RGBA', (r, g, b, a))
+    
     def create_text_image(self, text_line1, text_line2, font_size_pt, stamp_width_mm, dpi):
         """Создает изображение с текстом используя Kalissa шрифт и цвет #000080"""
         
@@ -286,13 +304,9 @@ class StampApp:
         text_img = Image.new('RGBA', (text_block_width, total_height), (255, 255, 255, 0))
         draw = ImageDraw.Draw(text_img)
         
-        # Вычисляем центр текстового блока (две строки как единое целое)
-        text_block_height = text1_height + text2_height + line_spacing
-        text_block_center_y = text_block_height // 2
-        
         # Координаты для первой строки (центрированы по горизонтали и вертикали внутри блока)
         x1 = (text_block_width - text1_width) // 2
-        y1 = (total_height - text_block_height) // 2
+        y1 = padding_px
         
         # Координаты для второй строки
         x2 = (text_block_width - text2_width) // 2
@@ -425,6 +439,9 @@ class StampApp:
         doc = fitz.open(input_pdf)
         stamp_pil = Image.open(stamp_image)
         
+        # Применяем прозрачность к печати
+        stamp_pil = self.apply_opacity(stamp_pil, self.stamp_opacity)
+        
         text_img = self.create_text_image(text_line1, text_line2, font_size_pt, stamp_width_mm, self.quality_dpi)
         
         stamp_width = stamp_width_mm * 2.83
@@ -491,7 +508,7 @@ class StampApp:
                 pixmap=fitz.Pixmap(text_bytes.read())
             )
             
-            print(f"📄 Страница {page_num + 1}: отступ текста от печати = {self.text_margin_mm} мм")
+            print(f"📄 Страница {page_num + 1}: отступ текста от печати = {self.text_margin_mm} мм, прозрачность печати = {self.stamp_opacity * 100:.0f}%")
         
         doc.save(output_pdf, garbage=4, deflate=True)
         doc.close()
@@ -501,6 +518,9 @@ class StampApp:
                                     text_line1, text_line2, font_size_pt):
         main_image = Image.open(input_image)
         stamp_pil = Image.open(stamp_image)
+        
+        # Применяем прозрачность к печати
+        stamp_pil = self.apply_opacity(stamp_pil, self.stamp_opacity)
         
         text_img = self.create_text_image(text_line1, text_line2, font_size_pt, stamp_width_mm, self.quality_dpi)
         
