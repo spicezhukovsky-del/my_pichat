@@ -1,7 +1,7 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox
 import fitz  # PyMuPDF
-from PIL import Image, ImageDraw, ImageFont, ImageTk
+from PIL import Image, ImageDraw, ImageFont
 import io
 import os
 import platform
@@ -11,7 +11,7 @@ class StampApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Постановка печати на документ")
-        self.root.geometry("700x750")
+        self.root.geometry("600x800")
         
         # Переменные для хранения путей к файлам
         self.document_path = None
@@ -20,7 +20,7 @@ class StampApp:
         self.output_path = None
         self.document_type = None
         
-        # Фиксированное качество 600 DPI для печати
+        # Фиксированное качество 600 DPI
         self.quality_dpi = 600
         
         # Цвет текста (темно-синий #000080)
@@ -116,7 +116,6 @@ class StampApp:
         tk.Label(line1_frame, text="Строка 1:", width=10, anchor='w').pack(side='left')
         self.text_line1 = tk.Entry(line1_frame, width=40)
         self.text_line1.pack(side='left', fill='x', expand=True)
-        self.text_line1.bind('<KeyRelease>', self.on_input_change)
         
         # Вторая строка
         line2_frame = tk.Frame(text_frame)
@@ -125,7 +124,6 @@ class StampApp:
         tk.Label(line2_frame, text="Строка 2:", width=10, anchor='w').pack(side='left')
         self.text_line2 = tk.Entry(line2_frame, width=40)
         self.text_line2.pack(side='left', fill='x', expand=True)
-        self.text_line2.bind('<KeyRelease>', self.on_input_change)
         
         # Третья строка (подпись + текст)
         line3_frame = tk.LabelFrame(text_frame, text="Строка 3: Подпись + текст", padx=5, pady=5)
@@ -137,7 +135,6 @@ class StampApp:
         tk.Label(sig_select_frame, text="Подпись:", width=10, anchor='w').pack(side='left')
         self.signature_entry = tk.Entry(sig_select_frame, width=30)
         self.signature_entry.pack(side='left', padx=(0, 5), fill='x', expand=True)
-        self.signature_entry.bind('<KeyRelease>', self.on_input_change)
         
         tk.Button(
             sig_select_frame, 
@@ -154,7 +151,6 @@ class StampApp:
         tk.Label(sig_text_frame, text="Текст:", width=10, anchor='w').pack(side='left')
         self.signature_text = tk.Entry(sig_text_frame, width=40)
         self.signature_text.pack(side='left', fill='x', expand=True)
-        self.signature_text.bind('<KeyRelease>', self.on_input_change)
         
         # Размер текста
         text_size_frame = tk.Frame(text_frame)
@@ -162,10 +158,9 @@ class StampApp:
         
         tk.Label(text_size_frame, text="Размер шрифта:", width=12, anchor='w').pack(side='left')
         self.text_size_var = tk.StringVar(value="14")
-        text_size_spinbox = tk.Spinbox(text_size_frame, from_=8, to=72, textvariable=self.text_size_var, width=8, command=self.on_input_change)
+        text_size_spinbox = tk.Spinbox(text_size_frame, from_=8, to=72, textvariable=self.text_size_var, width=8)
         text_size_spinbox.pack(side='left')
         tk.Label(text_size_frame, text="pt", font=("Arial", 8), fg="gray").pack(side='left', padx=(2, 0))
-        self.text_size_var.trace('w', self.on_input_change)
         
         # Параметры печати
         options_frame = tk.LabelFrame(self.root, text="4. Параметры печати", padx=10, pady=10)
@@ -176,72 +171,26 @@ class StampApp:
         
         tk.Label(size_frame, text="Размер печати (мм):", width=15, anchor='w').pack(side='left')
         self.size_var = tk.StringVar(value="40")
-        size_entry = tk.Entry(size_frame, textvariable=self.size_var, width=10)
-        size_entry.pack(side='left')
-        self.size_var.trace('w', self.on_input_change)
+        tk.Entry(size_frame, textvariable=self.size_var, width=10).pack(side='left')
         
         margin_frame = tk.Frame(options_frame)
         margin_frame.pack(fill='x', pady=2)
         
         tk.Label(margin_frame, text="Отступ справа (мм):", width=15, anchor='w').pack(side='left')
         self.margin_right_var = tk.StringVar(value="50")
-        margin_right_entry = tk.Entry(margin_frame, textvariable=self.margin_right_var, width=10)
-        margin_right_entry.pack(side='left')
-        self.margin_right_var.trace('w', self.on_input_change)
+        tk.Entry(margin_frame, textvariable=self.margin_right_var, width=10).pack(side='left')
         
         margin_frame2 = tk.Frame(options_frame)
         margin_frame2.pack(fill='x', pady=2)
         
         tk.Label(margin_frame2, text="Отступ снизу (мм):", width=15, anchor='w').pack(side='left')
         self.margin_bottom_var = tk.StringVar(value="50")
-        margin_bottom_entry = tk.Entry(margin_frame2, textvariable=self.margin_bottom_var, width=10)
-        margin_bottom_entry.pack(side='left')
-        self.margin_bottom_var.trace('w', self.on_input_change)
+        tk.Entry(margin_frame2, textvariable=self.margin_bottom_var, width=10).pack(side='left')
         
-        # === НОВЫЙ БЛОК: Предварительный просмотр ===
-        preview_frame = tk.LabelFrame(self.root, text="5. Предварительный просмотр", padx=10, pady=10)
-        preview_frame.pack(pady=10, fill='both', expand=True, padx=20)
-        
-        # Кнопка обновления предпросмотра
-        preview_btn_frame = tk.Frame(preview_frame)
-        preview_btn_frame.pack(fill='x', pady=5)
-        
-        tk.Button(
-            preview_btn_frame,
-            text="🔄 Обновить предпросмотр",
-            command=self.update_preview,
-            bg="#4CAF50",
-            fg="white",
-            font=("Arial", 10)
-        ).pack(side='left', padx=5)
-        
-        tk.Label(
-            preview_btn_frame,
-            text="(Нажмите для обновления после изменений)",
-            font=("Arial", 8, "italic"),
-            fg="gray"
-        ).pack(side='left', padx=5)
-        
-        # Канва для отображения предпросмотра
-        self.preview_canvas = tk.Canvas(preview_frame, bg='white', height=250, width=500)
-        self.preview_canvas.pack(pady=5, fill='both', expand=True)
-        
-        # Информация о предпросмотре
-        self.preview_info_label = tk.Label(
-            preview_frame,
-            text="Заполните данные и нажмите 'Обновить предпросмотр'",
-            font=("Arial", 8),
-            fg="gray"
-        )
-        self.preview_info_label.pack(pady=2)
-        
-        # Кнопка печати
-        button_frame = tk.Frame(self.root)
-        button_frame.pack(pady=10)
-        
+        # Кнопка
         self.stamp_button = tk.Button(
-            button_frame,
-            text="🖨️ ПОСТАВИТЬ ПЕЧАТЬ",
+            self.root,
+            text="ПОСТАВИТЬ ПЕЧАТЬ",
             command=self.add_stamp,
             bg="#2196F3",
             fg="white",
@@ -249,9 +198,8 @@ class StampApp:
             height=2,
             width=25
         )
-        self.stamp_button.pack(side='left', padx=5)
+        self.stamp_button.pack(pady=10)
         
-        # Статус
         self.status_label = tk.Label(
             self.root,
             text="Выберите файлы для начала работы",
@@ -259,175 +207,6 @@ class StampApp:
             fg="gray"
         )
         self.status_label.pack(pady=5)
-    
-    def on_input_change(self, *args):
-        """Автоматическое обновление предпросмотра"""
-        self.update_preview()
-    
-    def get_preview_image(self):
-        """Создает изображение для предварительного просмотра"""
-        try:
-            # Создаем тестовое изображение для предпросмотра
-            preview_width = 500
-            preview_height = 250
-            
-            # Создаем белое фоновое изображение
-            preview_img = Image.new('RGB', (preview_width, preview_height), 'white')
-            draw = ImageDraw.Draw(preview_img)
-            
-            # Рисуем серую рамку и сетку для наглядности
-            draw.rectangle([0, 0, preview_width-1, preview_height-1], outline='lightgray', width=1)
-            
-            # Рисуем линии сетки
-            for x in range(0, preview_width, 50):
-                draw.line([(x, 0), (x, preview_height)], fill='#f0f0f0', width=1)
-            for y in range(0, preview_height, 50):
-                draw.line([(0, y), (preview_width, y)], fill='#f0f0f0', width=1)
-            
-            # Если есть документ, показываем его миниатюру
-            if self.document_path and os.path.exists(self.document_path):
-                try:
-                    if self.document_type == 'pdf':
-                        doc = fitz.open(self.document_path)
-                        page = doc[0]
-                        zoom = 0.2
-                        mat = fitz.Matrix(zoom, zoom)
-                        pix = page.get_pixmap(matrix=mat)
-                        img_data = pix.tobytes("ppm")
-                        doc_img = Image.open(io.BytesIO(img_data))
-                        doc_img.thumbnail((preview_width-20, preview_height-20))
-                        
-                        # Вставляем документ на фон
-                        preview_img.paste(doc_img, (10, 10))
-                        doc.close()
-                    else:
-                        doc_img = Image.open(self.document_path)
-                        doc_img.thumbnail((preview_width-20, preview_height-20))
-                        preview_img.paste(doc_img, (10, 10))
-                except Exception as e:
-                    draw.text((10, 10), f"Ошибка загрузки документа: {str(e)}", fill='red', font=ImageFont.load_default())
-            
-            # Получаем текущие настройки
-            try:
-                stamp_width_mm = float(self.size_var.get())
-                margin_right_mm = float(self.margin_right_var.get())
-                margin_bottom_mm = float(self.margin_bottom_var.get())
-                font_size_pt = float(self.text_size_var.get())
-                
-                text_line1 = self.text_line1.get().strip()
-                text_line2 = self.text_line2.get().strip()
-                signature_text = self.signature_text.get().strip()
-                signature_path = self.signature_entry.get().strip()
-                
-                # Конвертируем мм в пиксели для предпросмотра (примерно)
-                pixels_per_mm_preview = 2  # для предпросмотра
-                stamp_width_preview = int(stamp_width_mm * pixels_per_mm_preview)
-                margin_right_preview = int(margin_right_mm * pixels_per_mm_preview)
-                margin_bottom_preview = int(margin_bottom_mm * pixels_per_mm_preview)
-                
-                # Позиция печати в предпросмотре
-                stamp_x_preview = preview_width - stamp_width_preview - margin_right_preview
-                stamp_y_preview = preview_height - stamp_width_preview - margin_bottom_preview
-                
-                # Рисуем рамку для печати
-                draw.rectangle(
-                    [stamp_x_preview, stamp_y_preview, 
-                     stamp_x_preview + stamp_width_preview, stamp_y_preview + stamp_width_preview],
-                    outline='red', width=2
-                )
-                draw.text((stamp_x_preview, stamp_y_preview-15), "Печать", fill='red', font=ImageFont.load_default())
-                
-                # Если есть изображение печати, показываем его миниатюру
-                if self.stamp_path and os.path.exists(self.stamp_path):
-                    try:
-                        stamp_img = Image.open(self.stamp_path)
-                        stamp_img.thumbnail((stamp_width_preview-5, stamp_width_preview-5))
-                        
-                        # Применяем прозрачность для предпросмотра
-                        if stamp_img.mode == 'RGBA':
-                            r, g, b, a = stamp_img.split()
-                            a = a.point(lambda p: p * self.stamp_opacity)
-                            stamp_img = Image.merge('RGBA', (r, g, b, a))
-                        
-                        # Вставляем печать
-                        stamp_preview_x = stamp_x_preview + (stamp_width_preview - stamp_img.width) // 2
-                        stamp_preview_y = stamp_y_preview + (stamp_width_preview - stamp_img.height) // 2
-                        preview_img.paste(stamp_img, (stamp_preview_x, stamp_preview_y), stamp_img if stamp_img.mode == 'RGBA' else None)
-                    except Exception as e:
-                        draw.text((stamp_x_preview, stamp_y_preview), "❌", fill='red', font=ImageFont.load_default())
-                
-                # Создаем тестовое изображение текста для предпросмотра
-                font_size_preview = font_size_pt // 2  # уменьшаем для предпросмотра
-                try:
-                    preview_font = ImageFont.truetype(self.font_path, font_size_preview) if os.path.exists(self.font_path) else ImageFont.load_default()
-                except:
-                    preview_font = ImageFont.load_default()
-                
-                # Позиция текста над печатью
-                text_lines = []
-                if text_line1:
-                    text_lines.append(text_line1)
-                if text_line2:
-                    text_lines.append(text_line2)
-                
-                # Добавляем подпись
-                sig_text = ""
-                if signature_path:
-                    sig_text += "[подпись] "
-                if signature_text:
-                    sig_text += signature_text
-                if sig_text:
-                    text_lines.append(sig_text)
-                
-                # Рисуем текст над печатью
-                if text_lines:
-                    y_offset = stamp_y_preview - 20 * len(text_lines)
-                    for i, line in enumerate(text_lines):
-                        text_x = stamp_x_preview + (stamp_width_preview - len(line) * font_size_preview // 2) // 2
-                        text_y = y_offset + i * 15
-                        draw.text((text_x, text_y), line, fill=self.text_color, font=preview_font)
-                        # Рисуем рамку вокруг текста для наглядности
-                        bbox = draw.textbbox((text_x, text_y), line, font=preview_font)
-                        draw.rectangle(bbox, outline='blue', width=1)
-                
-                # Добавляем информацию о настройках
-                info_y = 5
-                draw.text((5, info_y), f"📏 Размер печати: {stamp_width_mm} мм", fill='black', font=ImageFont.load_default())
-                draw.text((5, info_y+15), f"📏 Отступы: справа {margin_right_mm} мм, снизу {margin_bottom_mm} мм", fill='black', font=ImageFont.load_default())
-                draw.text((5, info_y+30), f"🔤 Шрифт: Gogol.ttf, {font_size_pt} pt", fill='black', font=ImageFont.load_default())
-                
-                self.preview_info_label.config(text="✅ Предпросмотр обновлен", fg="green")
-                
-            except Exception as e:
-                draw.text((10, 100), f"Ошибка данных: {str(e)}", fill='red', font=ImageFont.load_default())
-                self.preview_info_label.config(text="❌ Ошибка в параметрах", fg="red")
-            
-            return preview_img
-            
-        except Exception as e:
-            print(f"Ошибка создания предпросмотра: {e}")
-            return None
-    
-    def update_preview(self):
-        """Обновляет изображение предварительного просмотра"""
-        preview_img = self.get_preview_image()
-        if preview_img:
-            # Конвертируем PIL Image в ImageTk.PhotoImage
-            self.preview_photo = ImageTk.PhotoImage(preview_img)
-            self.preview_canvas.delete("all")
-            
-            # Центрируем изображение на канве
-            canvas_width = self.preview_canvas.winfo_width()
-            canvas_height = self.preview_canvas.winfo_height()
-            
-            if canvas_width > 1 and canvas_height > 1:
-                x = canvas_width // 2
-                y = canvas_height // 2
-            else:
-                x = 250
-                y = 125
-            
-            self.preview_canvas.create_image(x, y, image=self.preview_photo, anchor='center')
     
     def select_document(self):
         filename = filedialog.askopenfilename(
@@ -455,7 +234,6 @@ class StampApp:
             self.doc_entry.delete(0, tk.END)
             self.doc_entry.insert(0, filename)
             self.update_status()
-            self.update_preview()
     
     def select_stamp(self):
         filename = filedialog.askopenfilename(
@@ -467,7 +245,6 @@ class StampApp:
             self.stamp_entry.delete(0, tk.END)
             self.stamp_entry.insert(0, filename)
             self.update_status()
-            self.update_preview()
     
     def select_signature(self):
         filename = filedialog.askopenfilename(
@@ -479,7 +256,6 @@ class StampApp:
             self.signature_entry.delete(0, tk.END)
             self.signature_entry.insert(0, filename)
             self.update_status()
-            self.update_preview()
     
     def update_status(self):
         if not self.document_path:
@@ -600,6 +376,7 @@ class StampApp:
         
         line_spacing = int(font_size_pt * dpi / 72 * 0.1)  # 10% отступ между строками
         
+        # Убираем extra_bottom_padding
         total_height = padding_px  # только отступ сверху
         
         for i, height in enumerate(text_heights):
