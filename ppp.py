@@ -75,11 +75,11 @@ class StampApp:
         
         # Левая панель (настройки)
         self.left_frame_container = tk.Frame(self.main_paned)
-        self.main_paned.add(self.left_frame_container, width=int(screen_width * 0.85), minsize=400)
+        self.main_paned.add(self.left_frame_container, width=int(screen_width * 0.65), minsize=400)
         
         # Правая панель (предпросмотр)
         self.right_frame = tk.Frame(self.main_paned, bg='white')
-        self.main_paned.add(self.right_frame, width=int(screen_width * 0.15), minsize=350)
+        self.main_paned.add(self.right_frame, width=int(screen_width * 0.35), minsize=350)
         
         # Отключаем возможность перемещения разделителя
         self.main_paned.paneconfig(self.left_frame_container, stretch='never')
