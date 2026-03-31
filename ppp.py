@@ -61,13 +61,35 @@ class StampApp:
     
     def setup_main_layout(self):
         """Создает основной макет с двумя панелями"""
-        # Основной контейнер
-        self.main_frame = tk.Frame(self.root)
-        self.main_frame.pack(fill=tk.BOTH, expand=True)
+        screen_width = self.root.winfo_screenwidth()
         
-        # Левая панель (настройки) с прокруткой
-        self.left_canvas = tk.Canvas(self.main_frame, highlightthickness=0)
-        self.left_scrollbar = tk.Scrollbar(self.main_frame, orient="vertical", command=self.left_canvas.yview)
+        # Создаем PanedWindow с разделителем, но отключаем возможность перемещения
+        self.main_paned = tk.PanedWindow(
+            self.root, 
+            orient=tk.HORIZONTAL, 
+            sashrelief=tk.RAISED, 
+            sashwidth=8,
+            sashcursor="arrow"  # Можно убрать
+        )
+        self.main_paned.pack(fill=tk.BOTH, expand=True)
+        
+        # Левая панель (настройки)
+        self.left_frame_container = tk.Frame(self.main_paned)
+        self.main_paned.add(self.left_frame_container, width=int(screen_width * 0.85), minsize=400)
+        
+        # Правая панель (предпросмотр)
+        self.right_frame = tk.Frame(self.main_paned, bg='white')
+        self.main_paned.add(self.right_frame, width=int(screen_width * 0.15), minsize=350)
+        
+        # Отключаем возможность перемещения разделителя
+        self.main_paned.paneconfig(self.left_frame_container, stretch='never')
+        self.main_paned.paneconfig(self.right_frame, stretch='never')
+        
+        # Остальной код без изменений...
+        
+        # Настройка левой панели с прокруткой
+        self.left_canvas = tk.Canvas(self.left_frame_container, highlightthickness=0)
+        self.left_scrollbar = tk.Scrollbar(self.left_frame_container, orient="vertical", command=self.left_canvas.yview)
         self.left_frame = tk.Frame(self.left_canvas)
         
         self.left_frame.bind(
@@ -78,14 +100,8 @@ class StampApp:
         self.left_canvas.create_window((0, 0), window=self.left_frame, anchor="nw")
         self.left_canvas.configure(yscrollcommand=self.left_scrollbar.set)
         
-        # Правая панель (предпросмотр)
-        self.right_frame = tk.Frame(self.main_frame, bg='white', width=600, height=500)
-        self.right_frame.pack_propagate(False)  # Запрещаем автоматическое изменение размера
-
-        # Размещение
         self.left_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.left_scrollbar.pack(side=tk.LEFT, fill=tk.Y)
-        self.right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, padx=10, pady=10)
         
         # Прокрутка колесиком
         def _on_mousewheel(event):
@@ -109,11 +125,20 @@ class StampApp:
         )
         preview_title.pack(pady=(0, 10))
         
-        # Канвас для предпросмотра с прокруткой
+        # Канвас для предпросмотра
         self.preview_canvas = tk.Canvas(self.preview_frame, bg='white', highlightthickness=1)
         self.preview_canvas.pack(fill='both', expand=True)
         
-        # Кнопка обновления (оставляем для ручного обновления)
+        # Начальное сообщение
+        self.preview_canvas.create_text(
+            200, 150,
+            text="Выберите PDF документ",
+            fill="gray",
+            font=("Arial", 14),
+            tags="placeholder"
+        )
+        
+        # Кнопка обновления
         self.update_preview_btn = tk.Button(
             self.preview_frame,
             text="🔄 ОБНОВИТЬ ПРЕДПРОСМОТР",
@@ -283,69 +308,21 @@ class StampApp:
         messagebox.showinfo("Информация", "Файл не найден в избранном.")
     
     def update_preview(self):
-        """Обновляет предпросмотр"""
-        # Если нет документа, показываем только сообщение
+        """Обновляет предпросмотр документа с печатью"""
         if not self.document_path:
             self.preview_canvas.delete("all")
             self.preview_canvas.create_text(
-                self.preview_canvas.winfo_width()//2 if self.preview_canvas.winfo_width() > 1 else 300,
-                self.preview_canvas.winfo_height()//2 if self.preview_canvas.winfo_height() > 1 else 200,
+                200, 150,
                 text="Выберите PDF документ",
                 fill="gray",
-                font=("Arial", 14)
+                font=("Arial", 14),
+                tags="placeholder"
             )
             self.preview_info.config(text="Выберите документ", fg="orange")
             return
         
-        # Если нет печати, показываем документ без печати
-        if not self.stamp_path:
-            if not PDF2IMAGE_AVAILABLE:
-                self.preview_info.config(text="❌ pdf2image не установлен", fg="red")
-                return
-            
-            try:
-                self.preview_info.config(text="⏳ Загрузка документа...", fg="blue")
-                self.root.update()
-                
-                self.preview_canvas.delete("all")
-                
-                preview_dpi = 72
-                images = convert_from_path(self.document_path, dpi=preview_dpi, first_page=1, last_page=1)
-                
-                if images:
-                    doc_img = images[0]
-                    
-                    # Ограничиваем размер
-                    max_preview_width = 400
-                    if doc_img.width > max_preview_width:
-                        ratio = max_preview_width / doc_img.width
-                        new_size = (max_preview_width, int(doc_img.height * ratio))
-                        doc_img = doc_img.resize(new_size, Image.Resampling.LANCZOS)
-                    
-                    doc_img = doc_img.convert('RGB')
-                    
-                    preview_photo = ImageTk.PhotoImage(doc_img)
-                    self.preview_canvas.delete("all")
-                    self.preview_canvas.create_image(
-                        self.preview_canvas.winfo_width()//2,
-                        self.preview_canvas.winfo_height()//2,
-                        image=preview_photo,
-                        anchor='center'
-                    )
-                    self.preview_canvas.image = preview_photo
-                    
-                    self.preview_info.config(text="📄 Документ загружен. Выберите печать", fg="green")
-                else:
-                    self.preview_info.config(text="❌ Не удалось загрузить документ", fg="red")
-                    
-            except Exception as e:
-                self.preview_info.config(text=f"❌ Ошибка: {str(e)[:80]}", fg="red")
-                print(f"Ошибка: {e}")
-            return
-        
-        # Если есть и документ, и печать - показываем полный предпросмотр
         if not PDF2IMAGE_AVAILABLE:
-            self.preview_info.config(text="❌ pdf2image не установлен. Установите: pip install pdf2image", fg="red")
+            self.preview_info.config(text="❌ pdf2image не установлен", fg="red")
             return
         
         try:
@@ -355,6 +332,8 @@ class StampApp:
             self.preview_canvas.delete("all")
             
             preview_dpi = 72
+            max_preview_width = 500
+            
             images = convert_from_path(self.document_path, dpi=preview_dpi, first_page=1, last_page=1)
             
             if not images:
@@ -363,55 +342,75 @@ class StampApp:
             
             doc_img = images[0]
             
-            # Ограничиваем размер
-            max_preview_width = 600
             if doc_img.width > max_preview_width:
                 ratio = max_preview_width / doc_img.width
                 new_size = (max_preview_width, int(doc_img.height * ratio))
                 doc_img = doc_img.resize(new_size, Image.Resampling.LANCZOS)
             
-            # Получаем параметры
-            stamp_width_mm = float(self.size_var.get())
-            margin_right_mm = float(self.margin_right_var.get())
-            margin_bottom_mm = float(self.margin_bottom_var.get())
-            
-            # Пересчитываем масштаб
             scale = doc_img.width / 827
             
-            stamp_img = Image.open(self.stamp_path).convert('RGBA')
-            stamp_width_px = int(stamp_width_mm * scale * 3.78)
-            
-            if stamp_width_px > 0 and stamp_width_px < doc_img.width:
-                stamp_img = stamp_img.resize((stamp_width_px, stamp_width_px), Image.Resampling.LANCZOS)
-            
-            margin_right_px = int(margin_right_mm * scale * 3.78)
-            margin_bottom_px = int(margin_bottom_mm * scale * 3.78)
-            
-            stamp_x = doc_img.width - stamp_width_px - margin_right_px
-            stamp_y = doc_img.height - stamp_width_px - margin_bottom_px
-            
-            doc_img = doc_img.convert('RGBA')
-            stamp_x = max(0, stamp_x)
-            stamp_y = max(0, stamp_y)
-            
-            doc_img.paste(stamp_img, (stamp_x, stamp_y), stamp_img)
-            doc_img = doc_img.convert('RGB')
+            if self.stamp_path and os.path.exists(self.stamp_path):
+                try:
+                    stamp_width_mm = float(self.size_var.get())
+                    margin_right_mm = float(self.margin_right_var.get())
+                    margin_bottom_mm = float(self.margin_bottom_var.get())
+                    
+                    stamp_img = Image.open(self.stamp_path).convert('RGBA')
+                    
+                    # Сохраняем пропорции для предпросмотра
+                    orig_width, orig_height = stamp_img.size
+                    aspect_ratio = orig_height / orig_width
+                    
+                    stamp_width_px = int(stamp_width_mm * scale * 3.78)
+                    stamp_height_px = int(stamp_width_px * aspect_ratio)
+                    
+                    if stamp_width_px > 0 and stamp_width_px < doc_img.width:
+                        stamp_img = stamp_img.resize((stamp_width_px, stamp_height_px), Image.Resampling.LANCZOS)
+                    
+                    # Вычисляем позицию (правый нижний угол)
+                    margin_right_px = int(margin_right_mm * scale * 3.78)
+                    margin_bottom_px = int(margin_bottom_mm * scale * 3.78)
+                    
+                    stamp_x = doc_img.width - stamp_width_px - margin_right_px
+                    stamp_y = doc_img.height - stamp_height_px - margin_bottom_px  # ← ИСПРАВЛЕНО
+                    
+                    # Накладываем печать
+                    doc_img = doc_img.convert('RGBA')
+                    stamp_x = max(0, stamp_x)
+                    stamp_y = max(0, stamp_y)
+                    
+                    doc_img.paste(stamp_img, (stamp_x, stamp_y), stamp_img)
+                    doc_img = doc_img.convert('RGB')
+                    
+                    self.preview_info.config(text="✅ Предпросмотр с печатью готов", fg="green")
+                except Exception as e:
+                    print(f"Ошибка при наложении печати: {e}")
+                    self.preview_info.config(text="⚠️ Печать не добавлена", fg="orange")
+            else:
+                self.preview_info.config(text="📄 Документ загружен. Выберите печать", fg="green")
             
             preview_photo = ImageTk.PhotoImage(doc_img)
             self.preview_canvas.delete("all")
-            self.preview_canvas.create_image(
-                self.preview_canvas.winfo_width()//2,
-                self.preview_canvas.winfo_height()//2,
-                image=preview_photo,
-                anchor='center'
-            )
-            self.preview_canvas.image = preview_photo
             
-            self.preview_info.config(text="✅ Предпросмотр готов", fg="green")
+            canvas_width = self.preview_canvas.winfo_width()
+            canvas_height = self.preview_canvas.winfo_height()
+            
+            if canvas_width <= 1:
+                canvas_width = max_preview_width
+            if canvas_height <= 1:
+                canvas_height = doc_img.height
+            
+            x = canvas_width // 2
+            y = canvas_height // 2
+            
+            self.preview_canvas.create_image(x, y, image=preview_photo, anchor='center')
+            self.preview_canvas.image = preview_photo
             
         except Exception as e:
             self.preview_info.config(text=f"❌ Ошибка: {str(e)[:80]}", fg="red")
-            print(f"Ошибка: {e}")
+            print(f"Ошибка предпросмотра: {e}")
+            import traceback
+            traceback.print_exc()
     
     def setup_ui(self):
         """Создает интерфейс настроек на левой панели"""
@@ -532,7 +531,7 @@ class StampApp:
             self.doc_entry.delete(0, tk.END)
             self.doc_entry.insert(0, filename)
             self.update_status()
-            self.update_preview()  # Сразу показываем документ
+            self.update_preview()
     
     def select_stamp(self):
         filename = filedialog.askopenfilename(
@@ -544,7 +543,7 @@ class StampApp:
             self.stamp_entry.delete(0, tk.END)
             self.stamp_entry.insert(0, filename)
             self.update_status()
-            self.update_preview()  # Обновляем предпросмотр с печатью
+            self.update_preview()
     
     def update_status(self):
         if not self.document_path:
@@ -593,21 +592,29 @@ class StampApp:
             doc = fitz.open(self.document_path)
             stamp_pil = Image.open(self.stamp_path)
             
+            # Конвертируем мм в points (1 мм = 2.83 points)
             stamp_width = stamp_width_mm * 2.83
             margin_right = margin_right_mm * 2.83
             margin_bottom = margin_bottom_mm * 2.83
             scale_factor = self.quality_dpi / 72
             
+            # Сохраняем пропорции изображения
+            original_width, original_height = stamp_pil.size
+            aspect_ratio = original_height / original_width
+            stamp_height = stamp_width * aspect_ratio  # ← вычисляем высоту
+            
             for page_num in range(len(doc)):
                 page = doc[page_num]
                 rect = page.rect
                 
+                # Позиция печати: правый нижний угол
                 stamp_x = rect.width - stamp_width - margin_right
-                stamp_y = rect.height - stamp_width - margin_bottom
+                stamp_y = rect.height - stamp_height - margin_bottom  # ← используем stamp_height
                 
+                # Масштабируем печать с сохранением пропорций
                 stamp_resized = stamp_pil.resize(
                     (int(stamp_width * scale_factor), 
-                     int(stamp_width * stamp_pil.height / stamp_pil.width * scale_factor)),
+                    int(stamp_width * scale_factor * aspect_ratio)),
                     Image.Resampling.LANCZOS
                 )
                 
@@ -615,8 +622,9 @@ class StampApp:
                 stamp_resized.save(stamp_bytes, format='PNG')
                 stamp_bytes.seek(0)
                 
+                # Вставляем печать с правильными размерами
                 page.insert_image(
-                    fitz.Rect(stamp_x, stamp_y, stamp_x + stamp_width, stamp_y + stamp_width),
+                    fitz.Rect(stamp_x, stamp_y, stamp_x + stamp_width, stamp_y + stamp_height),
                     pixmap=fitz.Pixmap(stamp_bytes.read())
                 )
             
